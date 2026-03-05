@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 
 	"github.com/miekg/dns"
 )
+
+// forwardTimeout is the max time to wait for a response when forwarding to backend or resolver.
+const forwardTimeout = 42 * time.Second
 
 type backendPool struct {
 	domainSuffix string
@@ -112,6 +116,10 @@ func (s *server) forwardOrDrop(packet []byte, src net.Addr) {
 	}
 	defer resolverConn.Close()
 
+	deadline := time.Now().Add(forwardTimeout)
+	resolverConn.SetWriteDeadline(deadline)
+	resolverConn.SetReadDeadline(deadline)
+
 	if _, err := resolverConn.Write(packet); err != nil {
 		logErrorf("forward write: %v", err)
 		return
@@ -140,6 +148,10 @@ func (s *server) forwardToBackend(packet []byte, src net.Addr, backendAddr strin
 		return
 	}
 	defer conn.Close()
+
+	deadline := time.Now().Add(forwardTimeout)
+	conn.SetWriteDeadline(deadline)
+	conn.SetReadDeadline(deadline)
 
 	if _, err := conn.Write(packet); err != nil {
 		logErrorf("write backend: %v", err)
