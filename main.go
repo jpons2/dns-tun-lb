@@ -12,7 +12,9 @@ import (
 )
 
 // backendPool is a named set of backends for one domain suffix (stored normalized: lowercase, trimmed).
+// protocol is "dnstt" or "slipstream".
 type backendPool struct {
+	protocol     string
 	name         string
 	domainSuffix string
 	backends     []BackendConfig
@@ -22,7 +24,7 @@ type backendPool struct {
 type server struct {
 	cfg            *Config
 	conn           net.PacketConn
-	dnsttPools     []backendPool
+	pools          []backendPool
 	forwardAddr    *net.UDPAddr
 	sessionTracker *sessionTracker
 }
@@ -49,8 +51,8 @@ func newServer(cfg *Config) (*server, error) {
 		}
 	}
 
-	var dnsttPools []backendPool
-	seenSuffix := make(map[string]bool)
+	var pools []backendPool
+	seenSuffix := make(map[string]string) // normalized suffix -> "protocol pool Name" for duplicate error
 	for _, p := range cfg.Protocols.Dnstt.Pools {
 		if strings.TrimSpace(p.DomainSuffix) == "" {
 			conn.Close()
@@ -60,13 +62,37 @@ func newServer(cfg *Config) (*server, error) {
 			continue // skip pools with no backends
 		}
 		suffixKey := strings.ToLower(strings.TrimSpace(p.DomainSuffix))
-		if seenSuffix[suffixKey] {
+		if prev := seenSuffix[suffixKey]; prev != "" {
 			conn.Close()
-			return nil, fmt.Errorf("duplicate dnstt domain_suffix %q (pool %q)", p.DomainSuffix, p.Name)
+			return nil, fmt.Errorf("duplicate domain_suffix %q: already used by %s (dnstt pool %q)", p.DomainSuffix, prev, p.Name)
 		}
-		seenSuffix[suffixKey] = true
+		seenSuffix[suffixKey] = "dnstt pool " + p.Name
 		ring := newHashRing(p.Backends, 0)
-		dnsttPools = append(dnsttPools, backendPool{
+		pools = append(pools, backendPool{
+			protocol:     "dnstt",
+			name:         p.Name,
+			domainSuffix: suffixKey,
+			backends:     p.Backends,
+			ring:         ring,
+		})
+	}
+	for _, p := range cfg.Protocols.Slipstream.Pools {
+		if strings.TrimSpace(p.DomainSuffix) == "" {
+			conn.Close()
+			return nil, fmt.Errorf("slipstream pool %q has empty domain_suffix", p.Name)
+		}
+		if len(p.Backends) == 0 {
+			continue // skip pools with no backends
+		}
+		suffixKey := strings.ToLower(strings.TrimSpace(p.DomainSuffix))
+		if prev := seenSuffix[suffixKey]; prev != "" {
+			conn.Close()
+			return nil, fmt.Errorf("duplicate domain_suffix %q: already used by %s (slipstream pool %q)", p.DomainSuffix, prev, p.Name)
+		}
+		seenSuffix[suffixKey] = "slipstream pool " + p.Name
+		ring := newHashRing(p.Backends, 0)
+		pools = append(pools, backendPool{
+			protocol:     "slipstream",
 			name:         p.Name,
 			domainSuffix: suffixKey,
 			backends:     p.Backends,
@@ -77,7 +103,7 @@ func newServer(cfg *Config) (*server, error) {
 	return &server{
 		cfg:            cfg,
 		conn:           conn,
-		dnsttPools:     dnsttPools,
+		pools:          pools,
 		forwardAddr:    forwardAddr,
 		sessionTracker: newSessionTracker(10 * time.Minute),
 	}, nil
@@ -100,7 +126,7 @@ func (s *server) serve() error {
 }
 
 // longestMatchingPool returns the pool whose domain suffix matches qname and has the longest
-// suffix length (most specific). Returns nil if no pool matches.
+// suffix length. Returns nil if no pool matches. Tie-break: first in list order (dnstt then slipstream).
 func longestMatchingPool(qname string, pools []backendPool) *backendPool {
 	var best *backendPool
 	for i := range pools {
@@ -127,25 +153,34 @@ func (s *server) handlePacket(packet []byte, src net.Addr) {
 	// Route by configured domain suffix only (longest match). All QTYPEs go to the pool when the name matches.
 	if len(msg.Question) == 1 {
 		q := msg.Question[0]
-		pool := longestMatchingPool(q.Name, s.dnsttPools)
+		pool := longestMatchingPool(q.Name, s.pools)
 		if pool != nil {
 			if q.Qtype != dns.TypeTXT {
 				unsupportedQueriesTotal.WithLabelValues(fmt.Sprintf("%d", q.Qtype)).Inc()
 			}
-			sid, ok := extractDNSTTSessionID(&msg, pool.domainSuffix)
+			var sid []byte
+			var ok bool
+			switch pool.protocol {
+			case "dnstt":
+				sid, ok = extractDNSTTSessionID(&msg, pool.domainSuffix)
+			case "slipstream":
+				sid, ok = extractSlipstreamSessionID(&msg, pool.domainSuffix)
+			default:
+				ok = false
+			}
 			if !ok {
-				sid = []byte(strings.ToLower(strings.TrimSuffix(q.Name, "."))) // same QNAME → same backend
+				sid = []byte(strings.ToLower(strings.TrimSuffix(q.Name, "."))) // fallback: same QNAME → same backend
 			}
-			backend := pool.ring.choose("dnstt", pool.domainSuffix, sid)
+			backend := pool.ring.choose(pool.protocol, pool.domainSuffix, sid)
 			if s.sessionTracker != nil {
-				s.sessionTracker.observeSession("dnstt", pool.name, pool.domainSuffix, backend, sid)
+				s.sessionTracker.observeSession(pool.protocol, pool.name, pool.domainSuffix, backend, sid)
 			}
-			dnsRequestsTotal.WithLabelValues("dnstt").Inc()
-			dnsRoutedRequestsTotal.WithLabelValues("dnstt", pool.name).Inc()
-			labels := labelsForBackend("dnstt", pool.name, pool.domainSuffix, backend)
+			dnsRequestsTotal.WithLabelValues(pool.protocol).Inc()
+			dnsRoutedRequestsTotal.WithLabelValues(pool.protocol, pool.name).Inc()
+			labels := labelsForBackend(pool.protocol, pool.name, pool.domainSuffix, backend)
 			backendRequestsTotal.With(labels).Inc()
-			logDebugf("dnstt session %x -> backend %s (%s)", sid, backend.ID, backend.Address)
-			s.forwardToBackend(packet, src, "dnstt", pool.name, pool.domainSuffix, backend)
+			logDebugf("%s session %x -> backend %s (%s)", pool.protocol, sid, backend.ID, backend.Address)
+			s.forwardToBackend(packet, src, pool.protocol, pool.name, pool.domainSuffix, backend)
 			return
 		}
 	}
@@ -261,9 +296,9 @@ func main() {
 	}
 
 	logInfof("listening on %s", cfg.Global.ListenAddress)
-	logInfof("configured %d dnstt pool(s)", len(s.dnsttPools))
-	for _, p := range s.dnsttPools {
-		logDebugf("dnstt pool %q suffix=%q backends=%d", p.name, p.domainSuffix, len(p.backends))
+	logInfof("configured %d pool(s)", len(s.pools))
+	for _, p := range s.pools {
+		logDebugf("%s pool %q suffix=%q backends=%d", p.protocol, p.name, p.domainSuffix, len(p.backends))
 	}
 
 	if s.sessionTracker != nil {

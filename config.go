@@ -42,8 +42,13 @@ type DnsttProtocolConfig struct {
 	Pools []PoolConfig `yaml:"pools"`
 }
 
+type SlipstreamProtocolConfig struct {
+	Pools []PoolConfig `yaml:"pools"`
+}
+
 type ProtocolsConfig struct {
-	Dnstt DnsttProtocolConfig `yaml:"dnstt"`
+	Dnstt      DnsttProtocolConfig      `yaml:"dnstt"`
+	Slipstream SlipstreamProtocolConfig `yaml:"slipstream"`
 }
 
 type LoggingConfig struct {
@@ -55,7 +60,7 @@ type Config struct {
 	Protocols ProtocolsConfig `yaml:"protocols"`
 	Logging   LoggingConfig   `yaml:"logging"`
 
-	parsedReadTimeout time.Duration // set by LoadConfig from global.read_timeout
+	parsedReadTimeout time.Duration // from global.read_timeout; default 10s
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -68,7 +73,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, err
 	}
 	cfg.Global.MetricsListen = strings.TrimSpace(cfg.Global.MetricsListen)
-	// Parse read_timeout; default 10s if empty or invalid
+	// read_timeout: default 10s if empty or invalid
 	if cfg.Global.ReadTimeout != "" {
 		if d, err := time.ParseDuration(cfg.Global.ReadTimeout); err == nil && d > 0 {
 			cfg.parsedReadTimeout = d

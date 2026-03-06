@@ -17,7 +17,7 @@ type hashRing struct {
 	nodes []hashRingNode
 }
 
-// newHashRing builds a consistent hash ring with the given backends and replicas.
+// newHashRing builds a consistent hash ring. replicas <= 0 defaults to 64.
 func newHashRing(backends []BackendConfig, replicas int) *hashRing {
 	if len(backends) == 0 {
 		return &hashRing{}
