@@ -205,12 +205,15 @@ func (s *server) forwardOrDrop(packet []byte, src net.Addr) {
 
 	dnsForwardedRequestsTotal.Inc()
 
+	deadline := time.Now().Add(s.cfg.parsedReadTimeout)
+	resolverConn.SetWriteDeadline(deadline)
+    resolverConn.SetReadDeadline(deadline)
+
 	if _, err := resolverConn.Write(packet); err != nil {
 		logErrorf("forward write: %v", err)
 		dnsDroppedRequestsTotal.WithLabelValues("forward_write_error").Inc()
 		return
 	}
-	resolverConn.SetReadDeadline(time.Now().Add(s.cfg.parsedReadTimeout))
 	resp := make([]byte, 4096)
 	n, _, err := resolverConn.ReadFrom(resp)
 	if err != nil {
@@ -242,6 +245,10 @@ func (s *server) forwardToBackend(packet []byte, src net.Addr, protocol, pool, d
 	}
 	defer conn.Close()
 
+	deadline := time.Now().Add(s.cfg.parsedReadTimeout)
+	conn.SetWriteDeadline(deadline)
+    conn.SetReadDeadline(deadline)
+
 	if _, err := conn.Write(packet); err != nil {
 		logErrorf("write backend: %v", err)
 		backendErrorsTotal.With(labelsForBackendWithStage(protocol, pool, domain, backend, "write")).Inc()
@@ -250,7 +257,6 @@ func (s *server) forwardToBackend(packet []byte, src net.Addr, protocol, pool, d
 	labels := labelsForBackend(protocol, pool, domain, backend)
 	backendPacketsSent.With(labels).Inc()
 	backendBytesSent.With(labels).Add(float64(len(packet)))
-	conn.SetReadDeadline(time.Now().Add(s.cfg.parsedReadTimeout))
 	resp := make([]byte, 4096)
 	n, _, err := conn.ReadFrom(resp)
 	if err != nil {
